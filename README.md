@@ -95,3 +95,54 @@ npm run lint
 ```
 
 API documentation is available at `http://localhost:8000/docs` while the backend is running.
+
+## Stage 3 commerce
+
+The backend now includes persistent buyer carts, multi-seller checkout, parent orders, seller suborders, Decimal commission records, inventory movements, demo payment records, shipments and status history. Buyer, seller and admin ownership is enforced server-side.
+
+Stage 3 uses SQLite for automated tests. PostgreSQL has been configured for application use but was unavailable for verification in this environment, so PostgreSQL compatibility remains unverified.
+
+Commerce documentation:
+
+- [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)
+- [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)
+- [docs/COMMERCE_FLOW.md](docs/COMMERCE_FLOW.md)
+
+## Stage 4 AI and search
+
+Stage 4 adds a deterministic local AI fallback, optional OpenAI-compatible provider abstraction, actual-catalogue semantic-style search, explainable product ranking, shopping copilot, comparisons, seller listing tools, category/purchase recommendations and explainable TrustShield signals.
+
+No external AI provider is required. If no provider is configured, APIs remain available in clearly labelled deterministic local fallback mode.
+
+AI documentation:
+
+- [docs/AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md)
+- [docs/SEARCH_ENGINE.md](docs/SEARCH_ENGINE.md)
+- [docs/AI_SAFETY.md](docs/AI_SAFETY.md)
+- [docs/AI_PROVIDER_SETUP.md](docs/AI_PROVIDER_SETUP.md)
+
+## Stage 5 communication and operations
+
+Stage 5 adds persistent buyer-seller conversations, authenticated WebSockets, private attachments, notifications, support tickets, disputes, verification/moderation queues, explainable TrustShield alerts and audit logs.
+
+Translation is provider-ready but unavailable unless `TRANSLATION_API_URL` and credentials are configured. Real-time chat works through WebSocket and REST history; PostgreSQL remains unverified in this environment.
+
+Stage 5 documentation:
+
+- [docs/STAGE5_IMPLEMENTATION.md](docs/STAGE5_IMPLEMENTATION.md)
+- [docs/MESSAGING_ARCHITECTURE.md](docs/MESSAGING_ARCHITECTURE.md)
+- [docs/TRANSLATION_ARCHITECTURE.md](docs/TRANSLATION_ARCHITECTURE.md)
+- [docs/TRUSTSHIELD_V2.md](docs/TRUSTSHIELD_V2.md)
+- [docs/SUPPORT_OPERATIONS.md](docs/SUPPORT_OPERATIONS.md)
+- [docs/DISPUTE_WORKFLOW.md](docs/DISPUTE_WORKFLOW.md)
+- [docs/ADMIN_SECURITY.md](docs/ADMIN_SECURITY.md)
+
+## Stage 6–9 release status
+
+Database-derived platform and seller analytics are available through `/api/admin/analytics`, `/api/seller/analytics` and `/api/admin/analytics/export`. Values are calculated from stored orders and records; missing history is reported as empty or unavailable rather than fabricated.
+
+The account page includes buyer/seller registration, login and logout. Signed-in API operations replace browser-local state where a backend endpoint exists. The checkout address UI currently uses a default address until the address-entry form is connected; it must not be presented as collecting verified delivery data.
+
+Private verification and dispute document downloads are intentionally disabled: no public or unauthorised private-document route is exposed.
+
+PostgreSQL, external AI credentials, translation credentials and Docker availability remain deployment-time verification items. No real payment, payout or refund integration is claimed.

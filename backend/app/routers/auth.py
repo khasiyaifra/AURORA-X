@@ -7,13 +7,27 @@ from app.dependencies import get_current_user
 from app.models import BuyerProfile, Role, SellerProfile, User
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.security import create_access_token, hash_password, verify_password
+from collections import defaultdict, deque
+import time
+
+auth_attempts: dict[str, deque[float]] = defaultdict(deque)
+
+
+def auth_rate_limit(email: str) -> None:
+    now = time.monotonic()
+    queue = auth_attempts[email.lower()]
+    while queue and queue[0] < now - 60:
+        queue.popleft()
+    if len(queue) >= 10:
+        raise HTTPException(status_code=429, detail="Too many login attempts")
+    queue.append(now)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def ensure_roles(db: Session) -> dict[str, Role]:
     roles = {}
-    for name in ("buyer", "seller"):
+    for name in ("buyer", "seller", "admin"):
         role = db.scalar(select(Role).where(Role.name == name))
         if role is None:
             role = Role(name=name)
@@ -55,6 +69,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    auth_rate_limit(payload.email)
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if user is None or not verify_password(payload.password, user.password_hash) or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")

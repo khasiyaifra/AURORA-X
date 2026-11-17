@@ -52,6 +52,7 @@ class ProductCreate(BaseModel):
     store_id: str
     category: str = Field(min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=200)
+    sku: str = Field(default="", max_length=100)
     description: str = Field(default="", max_length=5000)
     price: float = Field(gt=0)
     image_url: str = Field(default="", max_length=500)
@@ -61,6 +62,7 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=1, max_length=80)
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    sku: str | None = Field(default=None, max_length=100)
     description: str | None = Field(default=None, max_length=5000)
     price: float | None = Field(default=None, gt=0)
     image_url: str | None = Field(default=None, max_length=500)
@@ -74,6 +76,7 @@ class ProductResponse(BaseModel):
     store_name: str
     category: str
     name: str
+    sku: str
     description: str
     price: float
     image_url: str

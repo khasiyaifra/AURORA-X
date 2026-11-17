@@ -33,3 +33,15 @@ def require_seller(user: User = Depends(get_current_user)) -> User:
     if user.role.name != "seller":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Seller role required")
     return user
+
+
+def require_buyer(user: User = Depends(get_current_user)) -> User:
+    if user.role.name != "buyer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Buyer role required")
+    return user
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role.name != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return user

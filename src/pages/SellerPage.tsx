@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowRight, BarChart3, Check, ChevronDown, Eye, Lightbulb, Plus, Rocket, ShieldAlert, Sparkles, Store, Trash2, Upload, WandSparkles } from 'lucide-react'
 import { categories, formatPrice } from '../data/products'
 import type { Category, Page, Product, SellerStore } from '../types'
 import { usePersistentState } from '../hooks/usePersistentState'
 import './SellerPage.css'
+import { api } from '../api/client'
 
-type SellerOrder = { id: string; buyer: string; item: string; total: number; status: 'Processing' | 'Ready to ship' | 'Shipped' }
+type SellerOrder = { id: string; buyer: string; item: string; total: number; status: 'Processing' | 'Ready to ship' | 'Shipped' | 'PENDING' | 'ACCEPTED' | 'PROCESSING' | 'READY_TO_SHIP' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' }
 const sampleOrders: SellerOrder[] = [
   { id: 'AX-1988', buyer: 'Riya K.', item: 'Astra 55" 4K QLED Television', total: 42990, status: 'Ready to ship' },
   { id: 'AX-1986', buyer: 'Sam D.', item: 'Fieldwork Active Watch', total: 12990, status: 'Processing' },
@@ -51,14 +52,62 @@ export function SellerPage({ page, products, store, storeId, onStore, onAddProdu
   const [formStock, setFormStock] = useState('12')
   const [sellerOrders, setSellerOrders] = usePersistentState<SellerOrder[]>('aurora-seller-orders', sampleOrders)
   const [sellerSuggestion, setSellerSuggestion] = useState('A cross-category bundle could be worth testing with your top-rated product.')
+  const [trustWarnings, setTrustWarnings] = useState<{ signal: string; reason: string; confidence: string; recommended_action: string }[]>([])
+  useEffect(() => {
+    if (!api.getToken()) return
+    void api.sellerAnalytics().then((result) => {
+      const data = result as { total_sales: string; order_count: number; product_count: number; status_counts: Record<string, number> }
+      setSellerSuggestion(`Database analytics: ${data.order_count} seller orders, ${data.product_count} products, ₹${data.total_sales} in suborder sales. Not payout data.`)
+    }).catch(() => undefined)
+    void api.sellerOrders().then((rows) => {
+      const realRows = rows as {
+        id: string
+        status: SellerOrder['status']
+        subtotal: string
+        items: { product_name: string; quantity: number }[]
+      }[]
+      setSellerOrders(realRows.map((row) => ({
+        id: row.id,
+        buyer: 'Authenticated buyer',
+        item: row.items.map((item) => `${item.quantity} × ${item.product_name}`).join(', '),
+        total: Number(row.subtotal),
+        status: row.status,
+      })))
+    }).catch(() => undefined)
+  }, [setSellerOrders])
+  useEffect(() => {
+    if (!api.getToken()) return
+    void api.trustShield().then((result) => {
+      const data = result as { warnings: typeof trustWarnings }
+      setTrustWarnings(data.warnings)
+    }).catch(() => undefined)
+  }, [])
   if (!demoSession && page === 'seller') return <main className="page-content seller-page seller-access-page"><div className="seller-access-mark"><Store size={23} /></div><div className="eyebrow">AURORA STUDIO · SELLER ACCESS</div><h1>Your shop,<br /><span>your point of view.</span></h1><p>Open the preloaded seller workspace or create a store with your own demo profile. No account is created and no personal details are collected.</p><div className="seller-access-actions"><button className="button button-primary" onClick={() => setDemoSession(true)}>Sign in to demo dashboard <ArrowRight size={15} /></button><button className="button button-secondary" onClick={() => onNavigate('creator')}>Register a demo store <Store size={15} /></button></div><small>Demo sign-in uses a local session only.</small></main>
 
   const sellerProducts = products.filter((product) => product.sellerId === (store?.id ?? 'northstar'))
   const openNewProduct = () => { setEditing(null); setFormName(''); setFormCategory('Accessories'); setFormPrice(''); setFormStock('12'); setFormDescription(''); setGenerated(false); setFormOpen(true) }
   const openEditProduct = (product: Product) => { setEditing(product); setFormName(product.name); setFormCategory(product.category); setFormPrice(String(product.price)); setFormStock(String(product.stock)); setFormDescription(product.description); setGenerated(false); setFormOpen(true) }
   const generateCopy = () => {
-    if (!formName.trim()) setFormName(`${formCategory} essential`)
-    setFormDescription(`${formName.trim() || formCategory} — thoughtfully selected for everyday use. Designed with care, made to last, and ready to become part of your routine.`)
+    const name = formName.trim() || `${formCategory} essential`
+    setFormName(name)
+    if (api.getToken()) {
+      void api.aiSellerTool({
+        tool: 'description',
+        productName: name,
+        category: formCategory,
+        description: formDescription,
+        price: formPrice,
+      }).then((result) => {
+        const data = result as { label?: string; description?: string }
+        if (data.description) setFormDescription(data.description)
+        setGenerated(true)
+      }).catch(() => {
+        setFormDescription(`${name} — thoughtfully selected for everyday use. Designed with care and ready for the catalogue.`)
+        setGenerated(true)
+      })
+      return
+    }
+    setFormDescription(`${name} — thoughtfully selected for everyday use. Designed with care and ready for the catalogue.`)
     setGenerated(true)
   }
   const suggestPrice = () => {
@@ -121,10 +170,17 @@ export function SellerPage({ page, products, store, storeId, onStore, onAddProdu
     <div className="seller-tabs"><button className="selected">Overview</button><button onClick={() => document.getElementById('inventory')?.scrollIntoView({ behavior: 'smooth' })}>Products</button><button onClick={() => onNavigate('support')}>Messages <span>2</span></button><button onClick={() => onNavigate('store')}>View storefront <ArrowRight size={13} /></button></div>
     <div className="seller-welcome"><div><span className="welcome-eyebrow">YOUR BUSINESS, AT A GLANCE</span><h2>{store?.name || 'Northstar Living'}<span className="store-live-dot" /></h2><p>{store ? store.description : 'Thoughtful technology for the everyday, chosen for a life well lived.'}</p><button className="text-link" onClick={() => onNavigate('store')}>Visit your storefront <ArrowRight size={14} /></button></div><div className="welcome-mark"><Store size={25} /><span>INDEPENDENT<br />BY DESIGN</span></div></div>
     <div className="seller-stats-grid"><div className="seller-stat-card"><span>DEMO REVENUE</span><strong>{formatPrice(revenue)}</strong><small><BarChart3 size={12} /> Illustrative inventory estimate</small></div><div className="seller-stat-card"><span>PRODUCTS LIVE</span><strong>{dashboardProducts.length}</strong><small><span className="stat-green-dot" /> Catalogue items</small></div><div className="seller-stat-card"><span>ORDERS THIS MONTH</span><strong>24</strong><small><span className="simulated-label">SIMULATED</span> Demo activity</small></div><div className="seller-stat-card"><span>STORE VISITS</span><strong>1,284</strong><small><span className="simulated-label">SIMULATED</span> Demo activity</small></div></div>
-    <div className="seller-main-grid"><section className="seller-panel" id="inventory"><div className="panel-heading"><div><div className="eyebrow">YOUR CATALOGUE</div><h2>Products</h2></div><button className="button button-primary button-small" onClick={openNewProduct}><Plus size={15} /> Add product</button></div>{formOpen && <form className="product-editor" onSubmit={saveProduct}><div className="editor-heading"><strong>{editing ? 'Edit product' : 'New product'}</strong><button type="button" className="icon-button" aria-label="Close product form" onClick={() => setFormOpen(false)}>×</button></div><label className="field-label">Product title<input value={formName} onChange={(event) => setFormName(event.target.value)} placeholder="Name this find" required /></label><div className="editor-fields"><label className="field-label">Category<select value={formCategory} onChange={(event) => setFormCategory(event.target.value as Category)}>{categories.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select><ChevronDown size={13} /></label><label className="field-label">Price (₹)<input type="number" min="1" value={formPrice} onChange={(event) => setFormPrice(event.target.value)} placeholder="2500" required /></label><label className="field-label">Inventory units<input type="number" min="0" step="1" value={formStock} onChange={(event) => setFormStock(event.target.value)} required /></label></div><label className="field-label">Description<textarea value={formDescription} onChange={(event) => setFormDescription(event.target.value)} rows={3} placeholder="A few words about what makes it special" /></label><button className="ai-copy-button" type="button" onClick={generateCopy}><WandSparkles size={14} /> {generated ? 'Regenerate demo copy' : 'Draft with AI seller assistant'}</button>{generated && <small className="demo-helper">Generated from your product details using a local template. No AI service is connected.</small>}<div className="editor-actions"><button className="button button-primary button-small" type="submit">Save product</button><button className="text-link" type="button" onClick={() => setFormOpen(false)}>Cancel</button></div></form>}
+    <div className="seller-main-grid"><section className="seller-panel" id="inventory"><div className="panel-heading"><div><div className="eyebrow">YOUR CATALOGUE</div><h2>Products</h2></div><button className="button button-primary button-small" onClick={openNewProduct}><Plus size={15} /> Add product</button></div>{formOpen && <form className="product-editor" onSubmit={saveProduct}><div className="editor-heading"><strong>{editing ? 'Edit product' : 'New product'}</strong><button type="button" className="icon-button" aria-label="Close product form" onClick={() => setFormOpen(false)}>×</button></div><label className="field-label">Product title<input value={formName} onChange={(event) => setFormName(event.target.value)} placeholder="Name this find" required /></label><div className="editor-fields"><label className="field-label">Category<select value={formCategory} onChange={(event) => setFormCategory(event.target.value as Category)}>{categories.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select><ChevronDown size={13} /></label><label className="field-label">Price (₹)<input type="number" min="1" value={formPrice} onChange={(event) => setFormPrice(event.target.value)} placeholder="2500" required /></label><label className="field-label">Inventory units<input type="number" min="0" step="1" value={formStock} onChange={(event) => setFormStock(event.target.value)} required /></label></div><label className="field-label">Description<textarea value={formDescription} onChange={(event) => setFormDescription(event.target.value)} rows={3} placeholder="A few words about what makes it special" /></label><button className="ai-copy-button" type="button" onClick={generateCopy}><WandSparkles size={14} /> {generated ? 'Regenerate demo copy' : 'Draft with AI seller assistant'}</button>    {generated && <small className="demo-helper">Generated with the seller AI tool. Results are advisory and must be reviewed before publication.</small>}<div className="editor-actions"><button className="button button-primary button-small" type="submit">Save product</button><button className="text-link" type="button" onClick={() => setFormOpen(false)}>Cancel</button></div></form>}
       {dashboardProducts.length ? dashboardProducts.map((product) => <article className="seller-product-row" key={product.id}><img src={product.image} alt={product.name} /><div><strong>{product.name}</strong><span>{product.category} · {product.stock} in stock</span></div><b>{formatPrice(product.price)}</b><span className="inventory-status">Live</span><button className="row-icon-button" title="Edit product" aria-label={`Edit ${product.name}`} onClick={() => openEditProduct(product)}><Eye size={15} /></button><button className="row-icon-button danger" title="Delete product" aria-label={`Delete ${product.name}`} onClick={() => onDeleteProduct(product.id)}><Trash2 size={15} /></button></article>) : <div className="empty-inventory"><Store size={20} /><span>No products yet. Add your first find to get started.</span></div>}</section>
-      <aside className="seller-side-column"><section className="trustshield-panel"><div className="trustshield-heading"><span className="trustshield-icon"><ShieldAlert size={17} /></span><div><div className="eyebrow">AURORA TRUSTSHIELD</div><strong>Seller signals</strong></div><span className="simulated-label">SIMULATED</span></div><p>Illustrative trust indicators for this demo seller profile. No real verification is performed.</p><div className="trust-metric"><span>Profile completeness</span><strong>92%</strong><i><b style={{ width: '92%' }} /></i></div><div className="trust-metric"><span>Fulfilment on time</span><strong>96%</strong><i><b style={{ width: '96%' }} /></i></div><div className="trust-metric"><span>Open complaints</span><strong>1</strong><small>Demo data</small></div><div className="risk-indicator"><Check size={14} /> No simulated listing flags</div></section><section className="seller-insight"><div className="eyebrow"><Lightbulb size={13} /> SELLER ASSISTANT · LOCAL DEMO</div><h3>Ideas for your next move.</h3><p>{sellerSuggestion}</p><div className="seller-suggestion-actions"><button onClick={suggestPrice}>Suggest a price</button><button onClick={suggestCampaign}>Plan a promotion</button></div><button className="text-link" onClick={() => setFormOpen(true)}>Work on a listing <ArrowRight size={13} /></button></section></aside></div>
-    <section className="seller-panel seller-orders-panel"><div className="panel-heading"><div><div className="eyebrow">ORDER DESK · SIMULATED</div><h2>Recent orders</h2></div><span className="simulated-label">DEMO DATA</span></div><div className="seller-order-list">{sellerOrders.map((order) => <article key={order.id}><div><span className="eyebrow">{order.id} · {order.buyer}</span><strong>{order.item}</strong></div><b>{formatPrice(order.total)}</b><select aria-label={`Order status for ${order.id}`} value={order.status} onChange={(event) => setSellerOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: event.target.value as SellerOrder['status'] } : item))}><option>Processing</option><option>Ready to ship</option><option>Shipped</option></select></article>)}</div></section>
+      <aside className="seller-side-column"><section className="trustshield-panel"><div className="trustshield-heading"><span className="trustshield-icon"><ShieldAlert size={17} /></span><div><div className="eyebrow">AURORA TRUSTSHIELD</div><strong>Seller signals</strong></div><span className="simulated-label">{api.getToken() ? 'LIVE RULES' : 'SIMULATED'}</span></div><p>{api.getToken() ? 'Explainable catalogue and inventory signals for your account.' : 'Illustrative trust indicators for this demo seller profile. No real verification is performed.'}</p>{trustWarnings.map((warning) => <div className="risk-indicator" key={warning.signal}><ShieldAlert size={14} /><span><strong>{warning.signal}</strong> · {warning.reason} <small>{warning.confidence} confidence · {warning.recommended_action}</small></span></div>)}<div className="trust-metric"><span>Profile completeness</span><strong>92%</strong><i><b style={{ width: '92%' }} /></i></div><div className="trust-metric"><span>Fulfilment on time</span><strong>96%</strong><i><b style={{ width: '96%' }} /></i></div><div className="trust-metric"><span>Open complaints</span><strong>1</strong><small>Demo data</small></div><div className="risk-indicator"><Check size={14} /> No simulated listing flags</div></section><section className="seller-insight"><div className="eyebrow"><Lightbulb size={13} /> SELLER ASSISTANT · LOCAL DEMO</div><h3>Ideas for your next move.</h3><p>{sellerSuggestion}</p><div className="seller-suggestion-actions"><button onClick={suggestPrice}>Suggest a price</button><button onClick={suggestCampaign}>Plan a promotion</button></div><button className="text-link" onClick={() => setFormOpen(true)}>Work on a listing <ArrowRight size={13} /></button></section></aside></div>
+    <section className="seller-panel seller-orders-panel"><div className="panel-heading"><div><div className="eyebrow">ORDER DESK · SIMULATED</div><h2>Recent orders</h2></div><span className="simulated-label">DEMO DATA</span></div><div className="seller-order-list">{sellerOrders.map((order) => <article key={order.id}><div><span className="eyebrow">{order.id} · {order.buyer}</span><strong>{order.item}</strong></div><b>{formatPrice(order.total)}</b>    <select aria-label={`Order status for ${order.id}`} value={order.status} onChange={(event) => {
+      const status = event.target.value as SellerOrder['status']
+      if (api.getToken()) {
+        void api.updateSellerOrder(order.id, status).then(() => setSellerOrders((current) => current.map((item) => item.id === order.id ? { ...item, status } : item))).catch(() => undefined)
+      } else {
+        setSellerOrders((current) => current.map((item) => item.id === order.id ? { ...item, status } : item))
+      }
+    }}><option>PENDING</option><option>ACCEPTED</option><option>PROCESSING</option><option>READY_TO_SHIP</option><option>SHIPPED</option><option>DELIVERED</option></select></article>)}</div></section>
     <div className="seller-footer-note"><Upload size={14} /> Images, inventory and sales are local demo data. Storefront publishing does not create a public website.</div>
   </main>
 }

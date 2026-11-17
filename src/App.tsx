@@ -78,8 +78,21 @@ function App() {
     setPage(nextPage)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-  const addToCart = (id: string) => {
+  const addToCart = async (id: string) => {
     const product = products.find((item) => item.id === id)
+    if (api.getToken()) {
+      try {
+        await api.addCartItem(id)
+        const backendCart = await api.cart() as {
+          items: { product_id: string; quantity: number }[]
+        }
+        setCart(backendCart.items.map((item) => ({ productId: item.product_id, quantity: item.quantity })))
+        notify('Added to your bag')
+      } catch (error) {
+        notify(error instanceof Error ? error.message : 'Could not update the bag')
+      }
+      return
+    }
     setCart((current) => {
       const existing = current.find((item) => item.productId === id)
       return existing
@@ -107,16 +120,63 @@ function App() {
     setStoreViewId(product.sellerId)
     navigate('store')
   }
-  const startSearch = () => { setCategory('All'); setSort('relevance'); navigate('explore') }
+  const startSearch = () => {
+    setCategory('All')
+    setSort('relevance')
+    navigate('explore')
+    if (!query.trim()) return
+    void api.aiSearch(query).then((response) => {
+      const ids = new Set(response.results.map((result) => result.id))
+      setProducts((current) => current.filter((product) => ids.has(product.id)))
+      notify(response.mode === 'deterministic local fallback' ? 'Intelligent search complete · local fallback' : 'Intelligent search complete')
+    }).catch((error) => notify(error instanceof Error ? error.message : 'Intelligent search unavailable'))
+  }
   const updateQuantity = (id: string, quantity: number) => {
     const product = products.find((item) => item.id === id)
+    if (api.getToken()) {
+      void api.cart().then((backendCart) => {
+        const item = (backendCart as { items: { id: string; product_id: string }[] }).items.find((line) => line.product_id === id)
+        if (!item) return
+        if (quantity <= 0) return api.removeCartItem(item.id).then(() => api.cart())
+        return api.updateCartItem(item.id, quantity).then(() => api.cart())
+      }).then((next) => {
+        if (!next) return
+        const cartData = next as { items: { product_id: string; quantity: number }[] }
+        setCart(cartData.items.map((line) => ({ productId: line.product_id, quantity: line.quantity })))
+      }).catch((error) => notify(error instanceof Error ? error.message : 'Could not update the bag'))
+      return
+    }
     setCart((current) => quantity <= 0
       ? current.filter((item) => item.productId !== id)
       : current.map((item) => item.productId === id ? { ...item, quantity: Math.min(quantity, product?.stock ?? 99) } : item))
   }
-  const checkout = () => {
+  const checkout = async () => {
     const total = cart.reduce((sum, line) => sum + (products.find((product) => product.id === line.productId)?.price ?? 0) * line.quantity, 0)
     if (!cart.length) return
+    if (api.getToken()) {
+      try {
+        const order = await api.checkout({
+          idempotencyKey: `web-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+          address: {
+            recipientName: customerName || 'AURORA Buyer',
+            phone: '9999999999',
+            line1: 'Default demo address',
+            city: 'Bengaluru',
+            state: 'Karnataka',
+            postalCode: '560001',
+            country: 'India',
+          },
+        }) as { id: string; total: string; items: unknown[] }
+        setConfirmationId(order.id)
+        setOrders((current) => [{ id: order.id, date: new Date().toISOString(), total: Number(order.total), items: order.items.length }, ...current])
+        setCart([])
+        notify('Order created')
+        navigate('confirmation')
+      } catch (error) {
+        notify(error instanceof Error ? error.message : 'Checkout could not be completed')
+      }
+      return
+    }
     const id = `AX-${Date.now().toString().slice(-6)}`
     setOrders((current) => [{ id, date: new Date().toISOString(), total, items: cart.reduce((count, item) => count + item.quantity, 0) }, ...current])
     setConfirmationId(id)
@@ -161,13 +221,38 @@ function App() {
     return () => { active = false }
   }, [setProducts])
 
+  useEffect(() => {
+    if (!api.getToken()) return
+    void api.cart().then((backendCart) => {
+      const cartData = backendCart as { items: { product_id: string; quantity: number }[] }
+      setCart(cartData.items.map((item) => ({ productId: item.product_id, quantity: item.quantity })))
+    }).catch(() => undefined)
+    void api.orders().then((backendOrders) => {
+      const rows = backendOrders as { id: string; created_at: string; total: string; items: unknown[] }[]
+      setOrders(rows.map((order) => ({
+        id: order.id,
+        date: order.created_at,
+        total: Number(order.total),
+        items: order.items.length,
+      })))
+    }).catch(() => undefined)
+  }, [setCart, setOrders])
+
   const handlers: ProductHandlers = { wishlist, compared, onWishlist: toggleWishlist, onCompare: toggleCompare, onAdd: addToCart, onOpen: openProduct, onSeller: openStore }
 
   return <div className="app-shell">
     <SiteHeader page={page} onNavigate={navigate} cartCount={cartCount} wishlistCount={wishlist.length} />
     <div className="context-rail"><div><span className="context-live" /> {apiStatus === 'loading' ? 'Loading the marketplace API' : apiStatus === 'connected' ? 'Live API catalogue connected' : 'Curated local catalogue'} <span className="context-dot">·</span> {sellerCount} independent {apiStatus === 'demo' ? 'demo' : ''} sellers <span className="context-dot">·</span> {apiStatus === 'demo' ? 'No live internet search' : 'Backend integration active'}</div><div><button onClick={() => navigate('compare')}>Compare {compared.length > 0 && <span>{compared.length}</span>}</button><span className="context-separator" /><button onClick={() => navigate('account')}><UserRound size={14} /> {customerName || 'Account'}</button></div></div>
     {['home', 'explore', 'categories'].includes(page) && <MarketplacePage page={page} products={rankedProducts} allProducts={products} recentlyViewed={viewedProducts} query={query} category={category} sort={sort} onQuery={setQuery} onSearch={startSearch} onCategory={setCategory} onSort={setSort} onNavigate={navigate} {...handlers} />}
-    {page === 'assistant' && <AssistantPage products={rankedProducts} handlers={handlers} onAsk={(prompt) => { setQuery(prompt); setCategory('All'); setSort('relevance') }} />}
+    {page === 'assistant' && <AssistantPage products={rankedProducts} handlers={handlers} onAsk={(prompt) => {
+      setQuery(prompt)
+      setCategory('All')
+      setSort('relevance')
+      void api.aiSearch(prompt).then((response) => {
+        const ids = new Set(response.results.map((result) => result.id))
+        setProducts((current) => current.filter((product) => ids.has(product.id)))
+      }).catch(() => undefined)
+    }} />}
     {['compare', 'cart', 'wishlist', 'confirmation', 'orders', 'account'].includes(page) && <CommercePage page={page} products={page === 'wishlist' ? wishlistProducts : rankedProducts} allProducts={products} cart={cart} orders={orders} customerName={customerName} confirmationId={confirmationId} onQuantity={updateQuantity} onRemove={(id) => updateQuantity(id, 0)} onCheckout={checkout} onNavigate={navigate} onName={setCustomerName} {...handlers} />}
     {['seller', 'creator', 'store'].includes(page) && <SellerPage page={page} products={products} store={store} storeId={storeViewId} onStore={(value) => { setStore(value); setStoreViewId(value.id); setProducts((current) => current.map((product) => product.id.startsWith('seller-') ? { ...product, seller: value.name, sellerId: value.id } : product)); navigate('store') }} onAddProduct={(product) => { setProducts((current) => [...current, product]); notify('Product added to your catalogue') }} onUpdateProduct={(product) => setProducts((current) => current.map((item) => item.id === product.id ? product : item))} onDeleteProduct={(id) => { setProducts((current) => current.filter((product) => product.id !== id)); notify('Product removed') }} onNavigate={navigate} />}
     {page === 'support' && <SupportPage products={products} />}

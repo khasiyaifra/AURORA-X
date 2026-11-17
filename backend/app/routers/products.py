@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,6 +19,7 @@ def product_response(product: Product) -> ProductResponse:
         store_name=product.store.name,
         category=product.category.name,
         name=product.name,
+        sku=product.sku,
         description=product.description,
         price=float(product.price),
         image_url=product.image_url,
@@ -69,6 +72,7 @@ def create_product(payload: ProductCreate, user: User = Depends(require_seller),
         store_id=store.id,
         category_id=category.id,
         name=payload.name,
+        sku=payload.sku or f"SKU-{uuid.uuid4().hex[:12].upper()}",
         description=payload.description,
         price=payload.price,
         image_url=payload.image_url,
