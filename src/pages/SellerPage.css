@@ -1,0 +1,20 @@
+.editor-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.seller-suggestion-actions { margin-top: 11px; display: flex; flex-wrap: wrap; gap: 6px; }
+.seller-suggestion-actions button { min-height: 27px; padding: 0 7px; border: 1px solid rgba(255,255,255,.1); background: transparent; color: #c4c5cc; font-size: 7px; cursor: pointer; }
+.seller-suggestion-actions button:hover { border-color: rgba(170,150,255,.4); color: #d9d2ff; }
+.seller-orders-panel { margin-top: 13px; }
+.seller-order-list { border-top: 1px solid rgba(255,255,255,.07); }
+.seller-order-list article { min-height: 57px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(125px, .34fr); align-items: center; gap: 13px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.seller-order-list article > div { min-width: 0; display: grid; gap: 4px; }
+.seller-order-list article > div strong { overflow: hidden; color: #d9dade; font-size: 9px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.seller-order-list article > b { color: #e4e4e2; font: 500 10px 'Space Grotesk', sans-serif; }
+.seller-order-list select { min-height: 29px; padding: 4px 7px; border: 1px solid rgba(255,255,255,.11); appearance: none; background: #101216; color: #c4c6cc; font-size: 8px; }
+.seller-order-list select option { background: #17191f; }
+
+@media (max-width: 560px) {
+  .editor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seller-order-list article { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px 0; }
+  .seller-order-list article > div { grid-column: 1; }
+  .seller-order-list article > b { grid-column: 2; grid-row: 1; }
+  .seller-order-list article > select { grid-column: 1 / -1; }
+}
